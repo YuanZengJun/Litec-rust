@@ -1,0 +1,16 @@
+[package]
+name = "litec_parse"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+
+[dependencies]
+litec_ast = { path = "../litec_ast" }
+litec_span = { path = "../litec_span" }
+unicode-xid = "0.2.0"
+
+[dependencies.unicode-properties]
+version = "0.1.3"
+default-features = false
+features = ["emoji"]

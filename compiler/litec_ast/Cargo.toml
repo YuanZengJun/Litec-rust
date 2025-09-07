@@ -1,0 +1,9 @@
+[package]
+name = "litec_ast"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+
+[dependencies]
+litec_span = { path = "../litec_span" }
