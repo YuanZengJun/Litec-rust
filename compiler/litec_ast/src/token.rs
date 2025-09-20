@@ -21,18 +21,16 @@ impl<'src> Token<'src> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     LineComment,
     BlockComment,
-
-    Whitespace,
 
     Ident,
 
     Literal {
         kind: LiteralKind,
-        suffix_start: u16
+        suffix: Option<String>,
     },
 
     /// `;`
@@ -85,6 +83,8 @@ pub enum TokenKind {
     Minus,
     /// `--`
     MinusMinus,
+    /// `-=`
+    MinusEq,
     /// `&`
     BitAnd,
     /// `&&`
@@ -97,6 +97,8 @@ pub enum TokenKind {
     Plus,
     /// `++`
     PlusPlus,
+    /// `+=`
+    PlusEq,
     /// `*`
     Star,
     /// `/`
@@ -107,9 +109,13 @@ pub enum TokenKind {
     Percent,
     /// `%=`
     PercentEq,
+    /// `->`
+    Arrow,
+    /// `=>`
+    FatArrow,
 
     // Keyword
-    Fun,
+    Fn,
     Let,
     If,
     Else,
@@ -118,24 +124,20 @@ pub enum TokenKind {
     Return,
     True,
     False,
+    In,
 
-    Unknown,
-
-    InvalidIdent,
-
+    Error,
     Eof,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
     Int {
-        base: Base,
-        empty_int: bool
+        base: Base
     },
 
     Float {
-        base: Base,
-        empty_exponent: bool
+        base: Base
     },
 
     Char {

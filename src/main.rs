@@ -1,73 +1,135 @@
 use std::io::{self, Write};
-
-// 假设这些是您已有的模块和结构体
 use litec_ast::token::TokenKind;
 use litec_parse::lexer::Lexer;
+use litec_parse::parser::Parser;
 
 fn main() {
-    println!("Rust 词法分析器演示");
-    println!("输入源代码 (输入 ':quit' 退出):");
+    println!("Rust Parser REPL Demo");
+    println!("Enter source code (type ':quit' to exit, ':tokens' to show lexer results):");
     
     loop {
-        // 打印提示符
+        // Print prompt
         print!("> ");
         io::stdout().flush().unwrap();
         
-        // 读取用户输入
+        // Read user input
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
                 let input = input.trim();
                 
-                // 检查退出命令
+                // Check for quit command
                 if input == ":quit" {
-                    println!("再见!");
+                    println!("Goodbye!");
                     break;
                 }
                 
-                // 跳过空输入
+                // Check for token display command
+                if input == ":tokens" {
+                    println!("Please enter code for lexical analysis:");
+                    print!("> ");
+                    io::stdout().flush().unwrap();
+                    
+                    let mut code_input = String::new();
+                    if io::stdin().read_line(&mut code_input).is_ok() {
+                        let code_input = code_input.trim();
+                        if !code_input.is_empty() {
+                            show_tokens(code_input);
+                        }
+                    }
+                    continue;
+                }
+                
+                // Skip empty input
                 if input.is_empty() {
                     continue;
                 }
                 
-                // 创建词法分析器并处理输入
-                let mut lexer = Lexer::new(input);
-                
-                println!("Token 流:");
-                println!("{:<15} {:<20} {:<10} {}", "Kind", "Text", "Span", "Value");
-                println!("{}", "-".repeat(60));
-                
-                // 循环获取并打印所有 token
-                loop {
-                    let token = lexer.next_token();
-                    
-                    // 格式化输出
-                    let kind_str = format!("{:?}", token.kind);
-                    let text_str = format!("'{}'", token.text);
-                    let span_str = format!("{:?}", token.span);
-                    
-                    // 对于字面量 token，尝试提取值
-                    let value_str = match token.kind {
-                        TokenKind::Literal { kind, suffix_start: _ } => {
-                            format!("{:?}", kind)
-                        }
-                        _ => "".to_string(),
-                    };
-                    
-                    println!("{:<15} {:<20} {:<10} {}", kind_str, text_str, span_str, value_str);
-                    
-                    // 检查是否到达文件末尾
-                    if matches!(token.kind, TokenKind::Eof) {
-                        break;
-                    }
-                }
-                
-                println!(); // 空行分隔不同输入
+                // Parse input
+                parse_and_display(input);
             }
             Err(error) => {
-                eprintln!("读取输入时出错: {}", error);
+                eprintln!("Error reading input: {}", error);
                 break;
             }
         }
     }
+}
+
+fn show_tokens(input: &str) {
+    println!("\nLexical Analysis Results:");
+    println!("{:<20} {:<15} {:<10} {}", "Kind", "Text", "Span", "Details");
+    println!("{}", "-".repeat(70));
+    
+    let mut lexer = Lexer::new(input);
+    let mut errors = Vec::new();
+    
+    loop {
+        match lexer.advance_token() {
+            Ok(token) => {
+                let kind_str = format!("{:?}", token.kind);
+                let text_str = if token.text.len() > 12 {
+                    format!("'{}...'", &token.text[..10])
+                } else {
+                    format!("'{}'", token.text)
+                };
+                let span_str = format!("{}..{}", token.span.start(), token.span.end());
+                
+                // Show details for literal tokens
+                let details = match &token.kind {
+                    TokenKind::Literal { kind, suffix } => {
+                        format!("Kind: {:?}, Suffix: {:?}", kind, suffix)
+                    }
+                    _ => String::new(),
+                };
+                
+                println!("{:<20} {:<15} {:<10} {}", kind_str, text_str, span_str, details);
+                
+                // Check if we've reached end of file
+                if matches!(token.kind, TokenKind::Eof) {
+                    break;
+                }
+            }
+            Err(error) => {
+                errors.push(error);
+                // Try to recover by skipping current character
+                lexer.advance(1);
+            }
+        }
+    }
+    
+    // Show errors
+    if !errors.is_empty() {
+        println!("\nLexical Errors:");
+        for error in &errors {
+            println!("  {}", error);
+        }
+    }
+    
+    println!(); // Empty line separator
+}
+
+fn parse_and_display(input: &str) {
+    println!("\nParsing Results:");
+    
+    // Create parser
+    let mut parser = Parser::new(input);
+    
+    let result = parser.parse();
+
+    // Parse input
+    match result {
+        Ok(_) => {            
+            println!("{:#?}", result);
+        }
+        Err(errors) => {
+            println!("Parse failed");
+            
+            for error in errors {
+                println!("    {} SourceRange:'{}'", error, error.span().extract(input).unwrap());
+            }
+        }
+    }
+    
+    println!(); // Empty line separator
 }

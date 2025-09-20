@@ -2,15 +2,21 @@
 name = "litec"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
 
 [dependencies]
 litec_parse = { path = "compiler/litec_parse" }
 litec_ast = { path = "compiler/litec_ast" }
 litec_span = { path = "compiler/litec_span" }
+litec_errors = { path = "compiler/litec_errors" }
 
 [workspace]
 members = [ 
     "compiler/litec_ast",
     "compiler/litec_parse",
-    "compiler/litec_span"
+    "compiler/litec_span",
+    "compiler/litec_errors"
 ]
+
+[profile.release]
+debug = true
