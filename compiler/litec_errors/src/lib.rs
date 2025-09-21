@@ -59,6 +59,12 @@ pub enum ParseError {
         span: Span
     },
 
+    #[error("Excected close_brace, found {found:?} at {span:?}")]
+    ExpectedCloseBrace {
+        found: TokenKind,
+        span: Span
+    },
+
     #[error("Excected open_paren, found {found:?} at {span:?}")]
     ExpectedOpenParen {
         found: TokenKind,
@@ -205,6 +211,41 @@ pub enum ParseError {
         suffix: String,
         span: Span,
     },
+
+    #[error("Invalid literal out of range '{value}' type {ty} at {span:?}")]
+    IntegerLiteralOutOfRange {
+        value: String,
+        ty: String,
+        span: Span,
+    },
+
+    #[error("IntegerLiteralParseError literal {literal} base {base} error {error} at {span:?}")]
+    IntegerLiteralParseError {
+        literal: String,
+        base: u32,
+        error: String,
+        span: Span,
+    },
+
+    #[error("IntegerLiteralParseError literal {literal} error {error} at {span:?}")]
+    FloatLiteralParseError {
+        literal: String,
+        error: String,
+        span: Span,
+    },
+
+    #[error("InvalidFloatSuffix {suffix} at {span:?}")]
+    InvalidFloatSuffix {
+        suffix: String,
+        span: Span
+    },
+
+    #[error("Invalid literal out of range '{value}' type {ty} at {span:?}")]
+    FloatLiteralOutOfRange {
+        value: String,
+        ty: String,
+        span: Span,
+    },
     
     #[error("Type mismatch: expected {expected}, found {found} at {span:?}")]
     TypeMismatch {
@@ -213,11 +254,9 @@ pub enum ParseError {
         span: Span,
     },
     
-    #[error("Cannot use '{operator}' with types {left} and {right} at {span:?}")]
+    #[error("Cannot use '{op:?}' at {span:?}")]
     InvalidOperatorTypes {
-        operator: String,
-        left: String,
-        right: String,
+        op: TokenKind,
         span: Span,
     },
     
@@ -300,6 +339,18 @@ pub enum ParseError {
         message: String,
         span: Span,
     },
+
+    #[error("Invalid string literal {literal} at {span:?}")]
+    InvalidStringLiteral {
+        literal: String,
+        span: Span
+    },
+
+    #[error("Invalid char literal {literal} at {span:?}")]
+    InvalidCharLiteral {
+        literal: String,
+        span: Span
+    },
 }
 
 impl ParseError {
@@ -371,6 +422,14 @@ impl ParseError {
             ParseError::ExpectedItem { span, .. } => *span,
             ParseError::ExpectedOpenParen { span, .. } => *span,
             ParseError::ExpectedType { span, .. } => *span,
+            ParseError::ExpectedCloseBrace { span, .. } => *span,
+            ParseError::IntegerLiteralOutOfRange { span, .. } => *span,
+            ParseError::IntegerLiteralParseError { span, .. } => *span,
+            ParseError::FloatLiteralParseError { span , .. } => *span,
+            ParseError::InvalidFloatSuffix { span, .. } => *span,
+            ParseError::FloatLiteralOutOfRange { span, .. } => *span,
+            ParseError::InvalidStringLiteral { span, .. } => *span,
+            ParseError::InvalidCharLiteral { span, .. } => *span,
         }
     }
     

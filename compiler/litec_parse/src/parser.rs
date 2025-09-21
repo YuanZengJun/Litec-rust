@@ -1,6 +1,6 @@
 use litec_errors::ParseError;
-use litec_ast::{ast::{Expr, Function, Item, Param, Stmt, TypeAnnotation}, token::{LiteralKind, Token, TokenKind}};
-use litec_span::intern_global;
+use litec_ast::{ast::{Block, Crate, Expr, Field, Item, Param, Stmt, TypeAnnotation, Visibility}, token::{LiteralKind, Token, TokenKind}};
+use litec_span::{intern_global, Span};
 use crate::lexer::Lexer;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -91,12 +91,12 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Item>, Vec<ParseError>> {
-        let mut statements = Vec::new();
+    pub fn parse(&mut self) -> Result<Crate, Vec<ParseError>> {
+        let mut items = Vec::new();
         
         while self.current_token.kind != TokenKind::Eof {
             match self.parse_item() {
-                Ok(stmt) => statements.push(stmt),
+                Ok(stmt) => items.push(stmt),
                 Err(err) => {
                     self.errors.push(err);
                     // 尝试恢复，寻找下一个语句的开始
@@ -106,32 +106,85 @@ impl<'src> Parser<'src> {
         }
         
         if self.errors.is_empty() {
-            Ok(statements)
+            Ok(Crate { items })
         } else {
             Err(self.errors.clone())
         }
     }
 
     fn parse_item(&mut self) -> ParseResult<Item> {
+        let mut visibility = Visibility::Private;
+
+        if self.eat(TokenKind::Pub) {
+            visibility = Visibility::Public;
+        } else if self.eat(TokenKind::Priv) {
+            visibility = Visibility::Private;
+        }
+
         match self.current_token.kind {
-            TokenKind::Fn => self.parse_fn_item(),
+            TokenKind::Fn => self.parse_fn_item(visibility),
+            TokenKind::Struct => self.parse_struct_item(visibility),
             _ => Err(ParseError::ExpectedItem { found: self.current_token.kind.clone(), span: self.current_token.span })
         }
     }
 
-    fn parse_fn_item(&mut self) -> ParseResult<Item> {
-        let function = self.parse_fn()?;
+    fn parse_struct_item(&mut self, visibility: Visibility) -> ParseResult<Item> {
+        let span = self.current_token.span;
+        self.advance();
+        
+        let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone(), span: self.current_token.span })?;
 
-        Ok(Item::Function(function))
+        self.expect(TokenKind::OpenBrace, ParseError::ExpectedOpenBrace { found: self.current_token.kind.clone() , span: self.current_token.span })?;
+        
+        let mut fields: Vec<Field> = Vec::new();
+        while self.current_token.kind != TokenKind::CloseBrace && self.current_token.kind != TokenKind::Eof {
+            fields.push(self.parse_field()?);
+
+            self.eat(TokenKind::Comma);
+        }
+
+        let close = self.expect(TokenKind::CloseBrace, ParseError::ExpectedCloseBrace { found: self.current_token.kind.clone() , span: self.current_token.span })?.span;
+
+        Ok(Item::Struct { visibility: visibility, name: intern_global(name.text), fields: fields, span: span.extend_to(close) })
     }
 
-    fn parse_fn(&mut self) -> ParseResult<Function> {
+    fn parse_field(&mut self) -> ParseResult<Field> {
+        let span = self.current_token.span;
+        let mut flag = Visibility::Private;
+        match self.current_token.kind {
+            TokenKind::Pub => {
+                flag = Visibility::Public;
+                self.advance();
+            }
+            TokenKind::Priv => {
+                flag = Visibility::Private;
+                self.advance();
+            }
+            _ => {}
+        };
+
+        let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone(), span: self.current_token.span })?;
+        
+        self.expect(TokenKind::Colon, ParseError::ExpectedColon { found: self.current_token.kind.clone(), span: self.current_token.span })?;
+
+        let ty = self.parse_type()?;
+        let ty_span = ty.span();
+
+        Ok(Field {
+            name: intern_global(name.text),
+            ty: ty,
+            visibility: flag,
+            span: span.extend_to(ty_span)
+        })
+    }
+
+    fn parse_fn_item(&mut self, visibility: Visibility) -> ParseResult<Item> {
         let span = self.current_token.span;
         self.advance();
 
         let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone() , span: self.current_token.span })?;
 
-        self.expect(TokenKind::OpenParen, ParseError::ExpectedOpenBrace { found: self.current_token.kind.clone() , span: self.current_token.span })?;
+        self.expect(TokenKind::OpenParen, ParseError::ExpectedOpenParen { found: self.current_token.kind.clone() , span: self.current_token.span })?;
 
         let mut params: Vec<Param> = Vec::new();
         if self.current_token.kind != TokenKind::CloseParen {
@@ -152,9 +205,10 @@ impl<'src> Parser<'src> {
         }
 
         let block = self.parse_block()?;
-        let block_span = block.span();
+        let block_span = block.span;
 
-        Ok(Function {
+        Ok(Item::Function {
+            visibility: visibility,
             name: intern_global(name.text),
             return_type: return_type,
             params: params,
@@ -166,14 +220,14 @@ impl<'src> Parser<'src> {
     fn parse_param(&mut self) -> ParseResult<Param> {
         let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone(), span: self.current_token.span })?;
         self.expect(TokenKind::Colon, ParseError::ExpectedColon { found: self.current_token.kind.clone(), span: self.current_token.span })?;
-        let r#type = self.parse_type()?;
+        let ty = self.parse_type()?;
         let name_span = name.span;
-        let r#type_span = r#type.span();
+        let ty_span = ty.span();
 
         Ok(Param {
             name: intern_global(name.text),
-            r#type: r#type,
-            span: name_span.extend_to(r#type_span)
+            ty,
+            span: name_span.extend_to(ty_span)
         })
     }
 
@@ -260,8 +314,23 @@ impl<'src> Parser<'src> {
         {
             left = self.parse_infix(left)?;
         }
+
+        left = self.parse_posifix(left)?;
         
         Ok(left)
+    }
+
+    fn parse_posifix(&mut self, left: Expr) -> ParseResult<Expr> {
+        match self.current_token.kind {
+            TokenKind::PlusPlus | TokenKind::MinusMinus => {
+                let op = self.current_token.kind.clone();
+                let op_span = self.current_token.span;
+                let left_span = left.span();
+                self.advance();
+                Ok(Expr::Posifix { op: op, expr: Box::new(left), span: left_span.extend_to(op_span) })
+            }
+            _ => Ok(left)
+        }
     }
 
     fn parse_prefix(&mut self) -> ParseResult<Expr> {
@@ -284,7 +353,7 @@ impl<'src> Parser<'src> {
                 }
                 
                 let value = intern_global(self.current_token.text);
-                let suffix_id = suffix.as_ref().map(|s| intern_global(s));
+                let suffix_id = *suffix;
                 
                 let expr = Expr::Literal {
                     kind: kind.clone(),
@@ -328,14 +397,25 @@ impl<'src> Parser<'src> {
                 let span = start_span.extend_to(expr.span());
                 Ok(Expr::Unary {
                     op,
-                    expr: Box::new(expr),
+                    operand: Box::new(expr),
                     span,
                 })
             }
             TokenKind::If => self.parse_if_expression(),
             TokenKind::While => self.parse_while_expression(),
             TokenKind::For => self.parse_for_expression(),
-            TokenKind::OpenBrace => self.parse_block(),
+            TokenKind::OpenBrace => self.parse_block_expression(),
+            TokenKind::Loop => self.parse_loop_expression(),
+            TokenKind::True => {
+                let span = self.current_token.span;
+                self.advance();
+                Ok(Expr::Bool { value: true, span: span })
+            }
+            TokenKind::False => {
+                let span = self.current_token.span;
+                self.advance();
+                Ok(Expr::Bool { value: false, span: span })
+            }
 
             _ => Err(ParseError::ExpectedExpression {
                 found: self.current_token.kind.clone(),
@@ -358,14 +438,43 @@ impl<'src> Parser<'src> {
             | TokenKind::Gt
             | TokenKind::GtEq
             | TokenKind::And
-            | TokenKind::Or => self.parse_binary_expression(left),
+            | TokenKind::Or
+            | TokenKind::StarEq
+            | TokenKind::SlashEq => self.parse_binary_expression(left),
             
             TokenKind::Eq => self.parse_assignment_expression(left),
+
+            TokenKind::Dot | TokenKind::PathAccess => self.parse_access_expression(left),
 
             TokenKind::OpenParen => self.parse_call_exprssion(left),
             
             _ => Ok(left), // 不是中缀运算符，直接返回左表达式
         }
+    }
+
+    fn parse_loop_expression(&mut self) -> ParseResult<Expr> {
+        let span = self.current_token.span;
+        self.advance();
+
+        let body = self.parse_block()?;
+        let body_span = body.span;
+
+        Ok(Expr::Loop { body: body, span: span.extend_to(body_span) })
+    }
+
+    fn parse_access_expression(&mut self, left: Expr) -> ParseResult<Expr> {
+        let span = self.current_token.span;
+        let op = self.current_token.kind.clone();
+        self.advance();
+
+        let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone(), span: self.current_token.span })?;
+
+        Ok(Expr::MemberAccess {
+            accessed: Box::new(left),
+            op: op,
+            name: intern_global(name.text),
+            span: span.extend_to(name.span)
+        })
     }
 
     fn parse_call_exprssion(&mut self, callee: Expr) -> ParseResult<Expr> {
@@ -442,14 +551,14 @@ impl<'src> Parser<'src> {
             None
         };
         
-        let mut span = start_span.extend_to(then_branch.span());
+        let mut span = start_span.extend_to(then_branch.span);
         if let Some(else_branch) = &else_branch {
             span = span.extend_to(else_branch.span());
         }
         
         Ok(Expr::If {
             condition: Box::new(condition),
-            then_branch: Box::new(then_branch),
+            then_branch: then_branch,
             else_branch,
             span,
         })
@@ -463,10 +572,10 @@ impl<'src> Parser<'src> {
         
         let body = self.parse_block()?;
         
-        let span = start_span.extend_to(body.span());
+        let span = start_span.extend_to(body.span);
         Ok(Expr::While {
             condition: Box::new(condition),
-            body: Box::new(body),
+            body: body,
             span,
         })
     }
@@ -496,19 +605,25 @@ impl<'src> Parser<'src> {
         // 解析循环体
         let body = self.parse_block()?;
         
-        let span = start_span.extend_to(body.span());
+        let span = start_span.extend_to(body.span);
         Ok(Expr::For {
             variable: Box::new(Expr::Ident {
                 name: variable.0,
                 span: variable.1,
             }),
             generator: Box::new(generator),
-            body: Box::new(body),
+            body: body,
             span,
         })
     }
 
-    fn parse_block(&mut self) -> ParseResult<Expr> {
+    fn parse_block_expression(&mut self) -> ParseResult<Expr> {
+        let block = self.parse_block()?;
+
+        Ok(Expr::Block { block: block })
+    }
+
+    fn parse_block(&mut self) -> ParseResult<Block> {
         let start = self.current_token.span;
         self.expect(TokenKind::OpenBrace, ParseError::ExpectedOpenBrace {
             found: self.current_token.kind.clone(),
@@ -532,80 +647,74 @@ impl<'src> Parser<'src> {
                     statements.push(self.parse_return_statement()?);
                     self.expect(TokenKind::Semi, ParseError::ExpectedSemi { found: self.current_token.kind.clone(), span: self.current_token.span })?;
                 }
+                TokenKind::Break => {
+                    statements.push(self.parse_break_statement()?);
+                    self.expect(TokenKind::Semi, ParseError::ExpectedSemi { found: self.current_token.kind.clone(), span: self.current_token.span })?;
+                }
                 _ => {
                     let expr = Box::new(self.parse_expression()?);
                     if self.current_token.kind == TokenKind::CloseBrace {
                         tail = Some(expr);
                     } else {
                         self.expect(TokenKind::Semi, ParseError::ExpectedSemi { found: self.current_token.kind.clone(), span: self.current_token.span })?;
-                        let expr_span = expr.span();
-                        statements.push(Stmt::Expr { expr: expr, span: expr_span });
+                        statements.push(Stmt::Expr { expr: expr});
                     }
                 }
             }
         }
-    
+
         let close_brace = self.expect(TokenKind::CloseBrace, ParseError::UnclosedBrace { span: self.current_token.span })?;
-    
-        Ok(Expr::Block { 
+
+        Ok(Block {
             stmts: statements,
             tail: tail,
             span: start.extend_to(close_brace.span)
         })
     }
 
-    fn parse_let_statement(&mut self) -> ParseResult<Stmt> {
-        let span = self.current_token.span;
+    fn parse_break_statement(&mut self) -> ParseResult<Stmt> {
+        let mut span = self.current_token.span;
         self.advance();
-        let mut has_type = false;
-        let mut has_value = false;
+
+        let mut value = None;
+        if self.current_token.kind != TokenKind::Semi {
+            value = Some(self.parse_expression()?);
+            span = span.extend_to(value.clone().unwrap().span());
+        }
+
+        Ok(Stmt::Break { value: value, span: span })
+    }
+
+    fn parse_let_statement(&mut self) -> ParseResult<Stmt> {
+        let mut span = self.current_token.span;
+        self.advance();
 
         let name = self.expect(TokenKind::Ident, ParseError::ExpectedIdentifier { found: self.current_token.kind.clone(), span: self.current_token.span })?;
 
-        let mut r#type: Option<TypeAnnotation> = None;
+        let mut ty: Option<TypeAnnotation> = None;
         if self.eat(TokenKind::Colon) {
-            r#type = Some(self.parse_type()?);
-            has_type = true;
+            ty = Some(self.parse_type()?);
+            span = span.extend_to(ty.clone().unwrap().span());
         }
 
         let mut value: Option<Expr> = None;
         if self.eat(TokenKind::Eq) {
             value = Some(self.parse_expression()?);
-            has_value = true;
+            span = span.extend_to(value.clone().unwrap().span());
         }
 
-        if has_value {
-            let value_span = value.clone().unwrap().span();
-            Ok(Stmt::Let {
-                name: intern_global(name.text), 
-                r#type: r#type, 
-                value: value, 
-                span: span.extend_to(value_span) 
-            })
-        } else if has_type {
-            let type_span = r#type.clone().unwrap().span();
-            Ok(Stmt::Let { name: intern_global(name.text), r#type: r#type, value: value, span: span.extend_to(type_span) })
-        } else {
-            Ok(Stmt::Let { name: intern_global(name.text), r#type: r#type, value: value, span: span.extend_to(name.span) })
-        }
+        Ok(Stmt::Let { name: intern_global(name.text), ty: ty, value: value, span: span })
     }
 
     fn parse_return_statement(&mut self) -> ParseResult<Stmt> {
-        let span = self.current_token.span;
+        let mut span = self.current_token.span;
         self.advance();
-        let mut has_value= false;
 
         let mut value: Option<Expr> = None;
         if self.current_token.kind != TokenKind::Semi {
             value = Some(self.parse_expression()?);
-            has_value = true;
+            span = span.extend_to(value.clone().unwrap().span());
         }
-        
-        let span = if has_value {
-            span.extend_to(value.clone().unwrap().span())
-        } else {
-            span
-        };
 
         Ok(Stmt::Return { value: value, span: span })
     }

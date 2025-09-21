@@ -1,21 +1,27 @@
 [package]
 name = "litec"
-version = "0.1.0"
+version = "0.1.1-alpha"
 edition = "2024"
 readme = "README.md"
+license = "MIT"
 
 [dependencies]
 litec_parse = { path = "compiler/litec_parse" }
 litec_ast = { path = "compiler/litec_ast" }
 litec_span = { path = "compiler/litec_span" }
 litec_errors = { path = "compiler/litec_errors" }
+litec_lower = { path = "compiler/litec_lower" }
+litec_hir = { path = "compiler/litec_hir" }
+colored = "3.0.0"
 
 [workspace]
 members = [ 
     "compiler/litec_ast",
     "compiler/litec_parse",
     "compiler/litec_span",
-    "compiler/litec_errors"
+    "compiler/litec_errors",
+    "compiler/litec_lower", 
+    "compiler/litec_hir"
 ]
 
 [profile.release]

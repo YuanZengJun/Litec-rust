@@ -1,7 +1,7 @@
 use litec_ast::token::{Base, Token, TokenKind};
 use litec_ast::token::TokenKind::*;
 use litec_ast::token::LiteralKind::*;
-use litec_span::Span;
+use litec_span::{intern_global, Span};
 use litec_errors::ParseError;
 use unicode_properties::UnicodeEmoji;
 
@@ -127,7 +127,7 @@ impl<'src> Lexer<'src> {
             '#' => { self.advance(1); Pound },
             '~' => { self.advance(1); Tilde },
             '?' => { self.advance(1); Question },
-            ':' => { self.advance(1); Colon },
+            ':' => self.lex_colon(),
             '$' => { self.advance(1); Dollar },
             '=' => self.lex_equals(),
             '!' => self.lex_bang(),
@@ -137,7 +137,7 @@ impl<'src> Lexer<'src> {
             '&' => self.lex_and(),
             '|' => self.lex_or(),
             '+' => self.lex_plus(),
-            '*' => { self.advance(1); Star },
+            '*' => self.lex_star(),
             '/' => self.lex_slash(),
             '^' => { self.advance(1); Caret },
             '%' => self.lex_percent(),
@@ -167,6 +167,17 @@ impl<'src> Lexer<'src> {
         };
         
         Ok(self.create_token(token_kind))
+    }
+
+    fn lex_colon(&mut self) -> TokenKind {
+        self.advance(1);
+        match self.current_char() {
+            Some(':') => {
+                self.advance(1);
+                PathAccess
+            }
+            _ => Colon
+        }
     }
 
     fn lex_percent(&mut self) -> TokenKind {
@@ -293,7 +304,22 @@ impl<'src> Lexer<'src> {
                 self.skip_block_comment();
                 BlockComment
             }
+            Some('=') => {
+                self.advance(1);
+                SlashEq
+            }
             _ => Slash,
+        }
+    }
+
+    fn lex_star(&mut self) -> TokenKind {
+        self.advance(1);
+        match self.current_char() {
+            Some('=') => {
+                self.advance(1);
+                StarEq
+            }
+            _ => Star
         }
     }
 
@@ -310,7 +336,8 @@ impl<'src> Lexer<'src> {
         let suffix = if self.current_char().map_or(false, is_id_start) {
             let suffix_start = self.position;
             self.eat_suffix();
-            Some(self.source[suffix_start..self.position].to_string())
+            let suffix_value = &self.source[suffix_start..self.position];
+            Some(intern_global(suffix_value))
         } else {
             None
         };
@@ -334,7 +361,8 @@ impl<'src> Lexer<'src> {
         let suffix = if self.current_char().map_or(false, is_id_start) {
             let suffix_start = self.position;
             self.eat_suffix();
-            Some(self.source[suffix_start..self.position].to_string())
+            let suffix_value = &self.source[suffix_start..self.position];
+            Some(intern_global(suffix_value))
         } else {
             None
         };
@@ -480,7 +508,8 @@ impl<'src> Lexer<'src> {
         let suffix = if self.current_char().map_or(false, is_id_start) {
             let suffix_start = self.position;
             self.eat_suffix();
-            Some(self.source[suffix_start..self.position].to_string())
+            let suffix_value = &self.source[suffix_start..self.position];
+            Some(intern_global(suffix_value))
         } else {
             None
         };
@@ -546,6 +575,12 @@ impl<'src> Lexer<'src> {
             "true" => True,
             "false" => False,
             "in" => In,
+            "struct" => Struct,
+            "loop" => Loop,
+            "break" => Break,
+            "continue" => Continue,
+            "pub" => Pub,
+            "priv" => Priv,
             _ => Ident,
         }
     }

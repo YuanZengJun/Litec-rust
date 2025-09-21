@@ -1,4 +1,4 @@
-use litec_span::Span;
+use litec_span::{Span, StringId};
 
 #[derive(Debug,PartialEq,Clone)]
 pub struct Token<'src> {
@@ -21,7 +21,7 @@ impl<'src> Token<'src> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     LineComment,
     BlockComment,
@@ -30,7 +30,7 @@ pub enum TokenKind {
 
     Literal {
         kind: LiteralKind,
-        suffix: Option<String>,
+        suffix: Option<StringId>,
     },
 
     /// `;`
@@ -39,6 +39,8 @@ pub enum TokenKind {
     Comma,
     /// `.`
     Dot,
+    /// `::`
+    PathAccess,
     /// `(`
     OpenParen,
     /// `)`
@@ -101,8 +103,12 @@ pub enum TokenKind {
     PlusEq,
     /// `*`
     Star,
+    /// `*=`
+    StarEq,
     /// `/`
     Slash,
+    /// `/=`
+    SlashEq,
     /// `^`
     Caret,
     /// `%`
@@ -125,6 +131,12 @@ pub enum TokenKind {
     True,
     False,
     In,
+    Struct,
+    Loop,
+    Break,
+    Continue,
+    Pub,
+    Priv,
 
     Error,
     Eof,

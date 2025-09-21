@@ -71,10 +71,15 @@ impl StringPool {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub fn to_string(&self) -> String {
+        let inner = self.inner.read().unwrap();
+        format!("{:#?}", inner)
+    }
 }
 
 // 全局字符串池
-static GLOBAL_STRING_POOL: once_cell::sync::Lazy<StringPool> =
+pub static GLOBAL_STRING_POOL: once_cell::sync::Lazy<StringPool> =
     once_cell::sync::Lazy::new(StringPool::new);
 
 /// 全局字符串插入函数
